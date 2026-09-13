@@ -1262,9 +1262,18 @@ async function initSupabase(){
           return {id: inserted[0].id};
         },
         onSnapshot: (callback) => {
+          // Initial fetch
+          supabaseClient.from(name).select().then(({ data }) => {
+            const docs = (data||[]).map(d => ({
+              id: d.id,
+              data: () => d
+            }));
+            callback({docs});
+          });
+          // Realtime subscription with new API
           supabaseClient
-            .from(name)
-            .on('*', payload => {
+            .channel(`${name}-changes`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: name }, (payload) => {
               supabaseClient.from(name).select().then(({ data }) => {
                 const docs = (data||[]).map(d => ({
                   id: d.id,
@@ -1302,9 +1311,18 @@ async function initSupabase(){
             if (error) throw error;
           },
           onSnapshot: (callback, errCallback) => {
+            // Initial fetch
+            supabaseClient.from(collection).select().eq('id', id).then(({ data, error }) => {
+              if (data && data[0]) {
+                callback({exists: true, data: () => data[0]});
+              } else {
+                callback({exists: false});
+              }
+            });
+            // Realtime subscription with new API
             supabaseClient
-              .from(collection)
-              .on('*', payload => {
+              .channel(`${collection}-${id}-changes`)
+              .on('postgres_changes', { event: '*', schema: 'public', table: collection }, (payload) => {
                 if (payload.new && payload.new.id === id) {
                   callback({exists: true, data: () => payload.new});
                 }
